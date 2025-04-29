@@ -91,18 +91,18 @@ async function signTx(tx: VersionedTransaction, ledger?: SolanaLedgerSigner) {
 
 	const program = new anchor.Program(idl as anchor.Idl, nttManagerProgramId, provider);
 	// delegate ownership to a temporary account!
-	// await program.methods
-	// 	.transferOwnership()
-	// 	.accounts({
-	// 		config: configPublicKey,
-	// 		owner: wallet.publicKey,
-	// 		newOwner: vaultPda,
-	// 		upgradeLock: upgradeLockPublicKey,
-	// 		programData: programDataPublicKey,
-	// 		bpfLoaderUpgradeableProgram: bpfLoaderUpgradeableProgramPublicKey,
-	// 	})
-	// 	.signers([wallet.payer])
-	// 	.rpc();
+	await program.methods
+		.transferOwnership()
+		.accounts({
+			config: configPublicKey,
+			owner: wallet.publicKey,
+			newOwner: vaultPda,
+			upgradeLock: upgradeLockPublicKey,
+			programData: programDataPublicKey,
+			bpfLoaderUpgradeableProgram: bpfLoaderUpgradeableProgramPublicKey,
+		})
+		.signers([wallet.payer])
+		.rpc();
 
 	// this needs to be someone who has permissions to sign transactions for the squad!
 	const squadMember = await getSquadMember(ledger);
