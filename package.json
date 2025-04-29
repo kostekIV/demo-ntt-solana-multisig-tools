@@ -15,6 +15,8 @@
 		"@wormhole-foundation/sdk": "^0.14.0",
 		"@wormhole-foundation/sdk-solana-ntt": "^0.4.0",
 		"bs58": "^6.0.0",
-		"dotenv": "^16.4.5"
+		"dotenv": "^16.4.5",
+		"@ledgerhq/hw-app-solana": "^7.2.4",
+		"@ledgerhq/hw-transport-node-hid": "^6.29.5"
 	}
 }
