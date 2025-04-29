@@ -41,8 +41,8 @@ async function signTx(tx: VersionedTransaction, ledger?: SolanaLedgerSigner) {
 	const walletKeypair = anchor.web3.Keypair.fromSecretKey(Uint8Array.from(walletJSON));
 
 	// TODO: change to your NTT manager address from the .env file
-	const nttManagerProgramId = "CnTS7RmoqVh88grwarBdkXM63avL4yaz8mtjzxjAj9zn"; //process.env.NTT_MANAGER_PROGRAM_ID as string;
-	const nttManagerProgramIdKey = new PublicKey("CnTS7RmoqVh88grwarBdkXM63avL4yaz8mtjzxjAj9zn");
+	const nttManagerProgramId = process.env.NTT_MANAGER_PROGRAM_ID as string;
+	const nttManagerProgramIdKey = new PublicKey(nttManagerProgramId);
 
 	const solanaCon = new solanaConnection('https://api.mainnet-beta.solana.com');
 	const ledger = USE_LEDGER ? await makeSolana(ACCOUNT_ID) : undefined;
@@ -53,10 +53,10 @@ async function signTx(tx: VersionedTransaction, ledger?: SolanaLedgerSigner) {
 	);
 
 	// Get deserialized multisig account info
-	// const multisigInfo = await multisig.accounts.Multisig.fromAccountAddress(
-	// 	solanaCon,
-	// 	MULTI_SIG_ACCOUNT
-	// );
+	const multisigInfo = await multisig.accounts.Multisig.fromAccountAddress(
+		solanaCon,
+		MULTI_SIG_ACCOUNT
+	);
 
 	// Derive the PDA of the Squads Vault
 	// this is going to be the Upgrade authority address, which is controlled by the Squad!
@@ -108,7 +108,7 @@ async function signTx(tx: VersionedTransaction, ledger?: SolanaLedgerSigner) {
 	const squadMember = await getSquadMember(ledger);
 
 	// Get the updated transaction index
-	const currentTransactionIndex = 0 // Number(multisigInfo.transactionIndex);
+	const currentTransactionIndex = Number(multisigInfo.transactionIndex);
 	const newTransactionIndex = BigInt(currentTransactionIndex + 1);
 
 	// this transaction gets wrapped and send to the vault of the squads to be signed there
