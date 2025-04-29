@@ -7,8 +7,32 @@ import {
 } from '@solana/web3.js';
 import * as multisig from '@sqds/multisig';
 import idl from '../config/idl.json';
-const fs = require('fs');
+import fs from 'fs';
 import 'dotenv/config';
+import { ACCOUNT_ID, MULTI_SIG_ACCOUNT, USE_LEDGER } from './consts';
+import { makeSolana, SolanaLedgerSigner } from './SolanaLedgerSigner';
+
+
+function getWallet() {
+	const tokenOwnerWalletPath = 'src/config/keys.json';
+	const walletJSON = JSON.parse(fs.readFileSync(tokenOwnerWalletPath, 'utf-8'));
+	return anchor.web3.Keypair.fromSecretKey(Uint8Array.from(walletJSON));
+}
+async function getSquadMember(ledger?: SolanaLedgerSigner) {
+	if (ledger) {
+		return (await ledger.getPublicKey()).ed;
+	}
+
+	return getWallet().publicKey
+}
+
+async function signTx(tx: VersionedTransaction, ledger?: SolanaLedgerSigner) {
+	if (ledger) {
+		return await ledger.signTransaction(tx);
+	}
+
+	tx.sign([getWallet()]);
+}
 
 (async () => {
 	// TODO: needs to be token owner & creator of the Squads multisig
@@ -20,26 +44,24 @@ import 'dotenv/config';
 	const nttManagerProgramId = process.env.NTT_MANAGER_PROGRAM_ID as string;
 	const nttManagerProgramIdKey = new PublicKey(nttManagerProgramId);
 
-	const solanaCon = new solanaConnection('https://api.devnet.solana.com');
+	const solanaCon = new solanaConnection('https://api.mainnet-beta.solana.com');
+	const ledger = USE_LEDGER ? await makeSolana(ACCOUNT_ID) : undefined;
 
-	const [configPublicKey, _configPublicKeyBump] = await PublicKey.findProgramAddress(
+	const [configPublicKey, _configPublicKeyBump] = PublicKey.findProgramAddressSync(
 		[Buffer.from('config')],
 		nttManagerProgramIdKey
 	);
 
-	// TODO: change to your multisig address, which is not the same as the vault address!!
-	// can be retrieved in the setting of the Squads UI
-	const multisigAddress = new PublicKey('CnTS7RmoqVh88grwarBdkXM63avL4yaz8mtjzxjAj9zn');
 	// Get deserialized multisig account info
 	const multisigInfo = await multisig.accounts.Multisig.fromAccountAddress(
 		solanaCon,
-		multisigAddress
+		MULTI_SIG_ACCOUNT
 	);
 
 	// Derive the PDA of the Squads Vault
 	// this is going to be the Upgrade authority address, which is controlled by the Squad!
 	const [vaultPda] = multisig.getVaultPda({
-		multisigPda: multisigAddress,
+		multisigPda: MULTI_SIG_ACCOUNT,
 		index: 0,
 	});
 	console.log(vaultPda);
@@ -58,7 +80,7 @@ import 'dotenv/config';
 	);
 
 	const anchorConnection = new anchor.web3.Connection(
-		anchor.web3.clusterApiUrl('devnet'),
+		anchor.web3.clusterApiUrl('mainnet-beta'),
 		'confirmed'
 	);
 	const wallet = new anchor.Wallet(walletKeypair);
@@ -83,7 +105,7 @@ import 'dotenv/config';
 		.rpc();
 
 	// this needs to be someone who has permissions to sign transactions for the squad!
-	const squadMember = anchor.web3.Keypair.fromSecretKey(Uint8Array.from(walletJSON));
+	const squadMember = await getSquadMember(ledger);
 
 	// Get the updated transaction index
 	const currentTransactionIndex = Number(multisigInfo.transactionIndex);
@@ -108,11 +130,11 @@ import 'dotenv/config';
 		instructions: [instructionClaim],
 	});
 
-	const uploadTransactionIx = await multisig.instructions.vaultTransactionCreate({
-		multisigPda: multisigAddress,
+	const uploadTransactionIx = multisig.instructions.vaultTransactionCreate({
+		multisigPda: MULTI_SIG_ACCOUNT,
 		// every squad has a global counter for transactions
 		transactionIndex: newTransactionIndex,
-		creator: squadMember.publicKey,
+		creator: squadMember,
 		vaultIndex: 0,
 		ephemeralSigners: 0,
 		transactionMessage: testClaimMessage,
@@ -120,13 +142,13 @@ import 'dotenv/config';
 
 	// proposal is squad specific!
 	const createProposalIx = multisig.instructions.proposalCreate({
-		multisigPda: multisigAddress,
+		multisigPda: MULTI_SIG_ACCOUNT,
 		transactionIndex: newTransactionIndex,
-		creator: squadMember.publicKey,
+		creator: squadMember,
 	});
 
 	const txMessage = new TransactionMessage({
-		payerKey: squadMember.publicKey,
+		payerKey: squadMember,
 		recentBlockhash: (await solanaCon.getLatestBlockhash()).blockhash,
 		instructions: [uploadTransactionIx, createProposalIx],
 	}).compileToV0Message();
@@ -134,7 +156,8 @@ import 'dotenv/config';
 	const transactionFinal = new VersionedTransaction(txMessage);
 	// needs to be signed by as many squads members to reach threshold,
 	// for that we also execute the proposalApprove method
-	transactionFinal.sign([squadMember]);
+	await signTx(transactionFinal, ledger);
+
 	const signatureFinal = await solanaCon.sendTransaction(transactionFinal);
 	await solanaCon.confirmTransaction(signatureFinal);
 
